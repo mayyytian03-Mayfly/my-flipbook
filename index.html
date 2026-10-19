@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Flip Book</title>
+    <!-- Canvas Confetti 礼花库 -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+        }
+
+        body {
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #18181c;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            overflow: hidden;
+            user-select: none;
+            transition: background-image 1s ease;
+        }
+
+        /* Loading 遮罩 */
+        #loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.6s ease, visibility 0.6s ease;
+        }
+
+        /* 3D 舞台 */
+        .stage {
+            position: relative;
+            width: 500px;
+            height: 500px;
+            perspective: 2000px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Book 容器 */
+        .book {
+            position: relative;
+            width: 500px;
+            height: 500px;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+            transform: translateX(0px);
+            cursor: pointer;
+        }
+
+        .paper {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            transform-style: preserve-3d;
+            transform-origin: left center;
+            transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+            box-shadow: none !important;
+        }
+
+        .front, .back {
+            background-color: #ffffff;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            backface-visibility: hidden;
+            box-shadow: none !important;
+            overflow: hidden;
+        }
+
+        .front { z-index: 2; }
+        .back { z-index: 1; transform: rotateY(180deg); }
+
+        .front img, .back img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            user-select: none;
+            -webkit-user-drag: none;
+            display: block;
+        }
+
+        .paper.flipped {
+            transform: rotateY(-180deg);
+        }
+
+        /* 悬浮导航按钮 */
+        .nav-btn {
+            position: fixed;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            font-size: 22px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        #prev-btn { left: 40px; }
+        #next-btn { right: 40px; }
+
+        .nav-btn:hover {
+            background: rgba(0, 0, 0, 0.65);
+            transform: translateY(-50%) scale(1.15);
+        }
+
+        .page-counter {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 14px;
+            letter-spacing: 1px;
+            z-index: 1000;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .top-left-nav {
+            position: fixed;
+            top: 25px;
+            left: 30px;
+            z-index: 1000;
+        }
+
+        .top-right-nav {
+            position: fixed;
+            top: 25px;
+            right: 30px;
+            display: flex;
+            gap: 12px;
+            z-index: 1000;
+        }
+
+        .icon-btn {
+            padding: 8px 18px;
+            border-radius: 20px;
+            background: #FDFFEB;
+            border: none !important;
+            color: #FCAC65;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon-btn:hover {
+            background: #FDFFEB;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: transparent;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 5000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+            pointer-events: auto;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .start-modal-card {
+            max-width: 90vw;
+            max-height: 85vh;
+            cursor: pointer;
+            background: transparent !important;
+            box-shadow: none !important;
+            border: none !important;
+            transform: scale(0.9);
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .start-modal-card img {
+            max-width: 100%;
+            max-height: 80vh;
+            display: block;
+            object-fit: contain;
+            filter: drop-shadow(0 10px 25px rgba(0,0,0,0.5));
+        }
+
+        .modal-overlay.active .start-modal-card {
+            transform: scale(1);
+        }
+
+        .congrat-card {
+            position: relative;
+            max-width: 90vw;
+            max-height: 85vh;
+            border-radius: 0;
+            overflow: visible;
+            background: transparent !important;
+            box-shadow: none !important;
+            border: none !important;
+            transform: scale(0.85);
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: -150px;
+        }
+
+        .modal-overlay.active .congrat-card {
+            transform: scale(1);
+        }
+
+        .congrat-card img.bg-img {
+            max-width: 100%;
+            max-height: 80vh;
+            display: block;
+            object-fit: contain;
+        }
+
+        .congrat-btn-img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            cursor: pointer;
+            transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), filter 0.3s ease;
+        }
+
+        .congrat-btn-img:hover {
+            transform: scale(1.05);
+            filter: brightness(1.1);
+        }
+
+        /* 结束全景页面 */
+        #end-page {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: 8000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.6s ease;
+            gap: 25px;
+            padding: 20px;
+        }
+
+        #end-page.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .end-title-text {
+            font-size: 40px;
+            font-weight: bold;
+            color: #FFFFFF;
+            text-shadow: 
+                -2px -2px 0 #FCAC65,
+                 2px -2px 0 #FCAC65,
+                -2px  2px 0 #FCAC65,
+                 2px  2px 0 #FCAC65,
+                 0 4px 10px rgba(0,0,0,0.15);
+            letter-spacing: 1px;
+            text-align: center;
+            margin-top: -30px;
+        }
+
+        .end-links-row {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            align-items: center;
+            margin-top: -10px;
+        }
+
+        .end-link-card {
+            background: #423C3A;
+            border: none !important;
+            padding: 12px 28px;
+            border-radius: 12px;
+            color: #D3B081;
+            font-size: 15px;
+            font-weight: bold;
+            text-decoration: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .end-link-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+        }
+
+        .reread-big-box {
+            background: rgba(66, 60, 58, 0.6);
+            border: 2px solid #FFFFFF;
+            border-radius: 24px;
+            padding: 35px 50px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+            gap: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+        }
+
+        .reread-box-title {
+            color: #D3B081;
+            font-size: 18px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+
+        .reread-cards-container {
+            display: flex;
+            gap: 35px;
+            justify-content: center;
+        }
+
+        .reread-medium-card {
+            border: none !important;
+            border-radius: 16px;
+            padding: 18px 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 5px;
+            gap: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 250px;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .reread-medium-card.left-card {
+            background: rgba(147, 107, 95, 0.75);
+        }
+
+        .reread-medium-card.right-card {
+            background: rgba(187, 202, 240, 0.75);
+        }
+
+        .reread-medium-card:hover {
+            transform: translateY(-5px) scale(1.04);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        .reread-card-text {
+            color: #FDFFEB;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .reread-card-img {
+            width: 200px;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loader" 
+        style="position: fixed; 
+                top: 0; 
+                left: 0; 
+                width: 100vw; 
+                height: 100vh; 
+                z-index: 99999; 
+                background-size: cover; 
+                background-position: center; 
+                background-repeat: no-repeat; 
+                background-color: #18181c;">
+    </div>
+    
+    <!-- 音频元素引用相对路径 -->
+    <audio id="bgm-normal" loop src="htmlbgm.mp3"></audio>
+    <audio id="bgm-finish" loop src="htmlbgm_wring.mp3"></audio>
+
+    <div class="top-left-nav">
+        <button id="music-btn" class="icon-btn">音乐：开</button>
+    </div>
+
+    <div class="top-right-nav">
+        <a href="https://icp.red/FnHRY_Jei" target="_blank" class="icon-btn">CPP展品页</a>
+        <a href="https://xhslink.cn/o/5t7FRa7c0Pi" target="_blank" class="icon-btn">小红书主页</a>
+        <button id="end-page-toggle-btn" class="icon-btn" style="display:none;">返回主页</button>
+    </div>
+
+    <div class="nav-btn" id="prev-btn">&#10094;</div>
+    <div class="nav-btn" id="next-btn">&#10095;</div>
+
+    <div class="stage">
+        <div id="book" class="book">
+            
+        <div id="p1" class="paper">
+            <div class="front">
+                <img src="figures/title1.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page1.png" />
+            </div>
+        </div>
+        
+
+        <div id="p2" class="paper">
+            <div class="front">
+                <img src="figures/page2.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page3.png" />
+            </div>
+        </div>
+        
+
+        <div id="p3" class="paper">
+            <div class="front">
+                <img src="figures/page4.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page5.png" />
+            </div>
+        </div>
+        
+
+        <div id="p4" class="paper">
+            <div class="front">
+                <img src="figures/page6.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page7.png" />
+            </div>
+        </div>
+        
+
+        <div id="p5" class="paper">
+            <div class="front">
+                <img src="figures/page8.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page9.png" />
+            </div>
+        </div>
+        
+
+        <div id="p6" class="paper">
+            <div class="front">
+                <img src="figures/page10.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page11.png" />
+            </div>
+        </div>
+        
+
+        <div id="p7" class="paper">
+            <div class="front">
+                <img src="figures/page12.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page13.png" />
+            </div>
+        </div>
+        
+
+        <div id="p8" class="paper">
+            <div class="front">
+                <img src="figures/page14.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page15.png" />
+            </div>
+        </div>
+        
+
+        <div id="p9" class="paper">
+            <div class="front">
+                <img src="figures/page16.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page17.png" />
+            </div>
+        </div>
+        
+
+        <div id="p10" class="paper">
+            <div class="front">
+                <img src="figures/page18.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page19.png" />
+            </div>
+        </div>
+        
+
+        <div id="p11" class="paper">
+            <div class="front">
+                <img src="figures/page20.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page21.png" />
+            </div>
+        </div>
+        
+
+        <div id="p12" class="paper">
+            <div class="front">
+                <img src="figures/page22.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page23.png" />
+            </div>
+        </div>
+        
+
+        <div id="p13" class="paper">
+            <div class="front">
+                <img src="figures/page24.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page25.png" />
+            </div>
+        </div>
+        
+
+        <div id="p14" class="paper">
+            <div class="front">
+                <img src="figures/page26.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page27.png" />
+            </div>
+        </div>
+        
+
+        <div id="p15" class="paper">
+            <div class="front">
+                <img src="figures/page28.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page29.png" />
+            </div>
+        </div>
+        
+
+        <div id="p16" class="paper">
+            <div class="front">
+                <img src="figures/page30.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page31.png" />
+            </div>
+        </div>
+        
+
+        <div id="p17" class="paper">
+            <div class="front">
+                <img src="figures/page32.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page33.png" />
+            </div>
+        </div>
+        
+
+        <div id="p18" class="paper">
+            <div class="front">
+                <img src="figures/page34.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page35.png" />
+            </div>
+        </div>
+        
+
+        <div id="p19" class="paper">
+            <div class="front">
+                <img src="figures/page36.png" />
+            </div>
+            <div class="back">
+                <img src="figures/page37.png" />
+            </div>
+        </div>
+        
+
+        <div id="p20" class="paper">
+            <div class="front">
+                <img src="figures/page38.png" />
+            </div>
+            <div class="back">
+                <img src="figures/title2.png" />
+            </div>
+        </div>
+        
+        </div>
+    </div>
+
+    <div class="page-counter" id="page-num">1 / 21</div>
+
+    <div id="start-hint-modal" class="modal-overlay">
+        <div class="start-modal-card">
+            <img id="start-hint-img" src="" alt="阅读方向提示" />
+        </div>
+    </div>
+
+    <div id="finish-trigger-modal" class="modal-overlay">
+        <div class="congrat-card">
+            <img class="bg-img" src="congrat.jpg" alt="Congratulations" />
+            <img class="congrat-btn-img" id="go-to-end-page-btn" src="bottom.jpg" alt="进入结束页面按钮" />
+        </div>
+    </div>
+
+    <div id="end-page" style="background-image: url('wall3.jpg');">
+        <div class="end-title-text">感谢阅读！感兴趣记得点点心愿单呀</div>
+
+        <div class="end-links-row">
+            <a href="https://icp.red/FnHRY_Jei" target="_blank" class="end-link-card">
+                CPP展示页：https://icp.red/FnHRY_Jei
+            </a>
+            <a href="https://xhslink.cn/o/5t7FRa7c0Pi" target="_blank" class="end-link-card">
+                小红书主页：https://xhslink.cn/o/5t7FRa7c0Pi
+            </a>
+        </div>
+
+        <div class="reread-big-box">
+            <div class="reread-box-title">选择方向重新翻阅全本</div>
+            
+            <div class="reread-cards-container">
+                <div class="reread-medium-card left-card" id="reread-front-btn">
+                    <span class="reread-card-text">从韩文清开始</span>
+                    <img class="reread-card-img" src="figures/title1.png" alt="封面" />
+                </div>
+
+                <div class="reread-medium-card right-card" id="reread-back-btn">
+                    <span class="reread-card-text">从张新杰开始</span>
+                    <img class="reread-card-img" src="figures/title2.png" alt="封底" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const wall1B64 = "wall1.jpg";
+        const wall2B64 = "wall2.jpg";
+        const wall4B64 = "wall4.jpg";
+
+        const load1B64 = "load1.jpg";
+        const load2B64 = "load2.jpg";
+
+        const direct1B64 = "direct1.jpg";
+        const direct2B64 = "direct2.jpg";
+
+        const prevBtn = document.querySelector("#prev-btn");
+        const nextBtn = document.querySelector("#next-btn");
+        const book = document.querySelector("#book");
+        const pageNumText = document.querySelector("#page-num");
+        const loader = document.querySelector("#loader");
+
+        const startModal = document.querySelector("#start-hint-modal");
+        const startHintImg = document.querySelector("#start-hint-img");
+
+        const finishModal = document.querySelector("#finish-trigger-modal");
+        const goToEndBtn = document.querySelector("#go-to-end-page-btn");
+        const endPage = document.querySelector("#end-page");
+        const endPageToggleBtn = document.querySelector("#end-page-toggle-btn");
+
+        const rereadFrontBtn = document.querySelector("#reread-front-btn");
+        const rereadBackBtn = document.querySelector("#reread-back-btn");
+
+        const bgmNormal = document.querySelector("#bgm-normal");
+        const bgmFinish = document.querySelector("#bgm-finish");
+        const musicBtn = document.querySelector("#music-btn");
+
+        const papers = Array.from(document.querySelectorAll(".paper"));
+
+        let currentLocation = 1;
+        const numOfPapers = papers.length;
+        const maxLocation = numOfPapers + 1;
+
+        const midPointLocation = Math.floor(maxLocation / 2) + 1;
+        let hasUnlockedFinish = false; 
+        let musicPlaying = false;
+        let isFinishBgmActive = false;
+
+        const isModeA = Math.random() < 0.5;
+
+        loader.style.backgroundImage = `url('${load1B64}')`;
+        let showLoad1 = true;
+
+        const loadingTimer = setInterval(() => {
+            showLoad1 = !showLoad1;
+            loader.style.backgroundImage = `url('${showLoad1 ? load1B64 : load2B64}')`;
+        }, 500);
+        
+        function resetZIndex() {
+            papers.forEach((paper, index) => {
+                if (paper.classList.contains("flipped")) {
+                    paper.style.zIndex = index + 1;
+                } else {
+                    paper.style.zIndex = numOfPapers - index;
+                }
+            });
+        }
+
+        function initPosition() {
+            if (isModeA) {
+                document.body.style.backgroundImage = `url('${wall1B64}')`;
+                startHintImg.src = direct1B64;
+                currentLocation = 1;
+                papers.forEach(p => p.classList.remove("flipped"));
+            } else {
+                document.body.style.backgroundImage = `url('${wall2B64}')`;
+                startHintImg.src = direct2B64;
+                currentLocation = maxLocation;
+                papers.forEach(p => p.classList.add("flipped"));
+            }
+            resetZIndex();
+            updateBookPosition();
+            updatePageCounter();
+        }
+
+        window.addEventListener("load", () => {
+            initPosition();
+            
+            setTimeout(() => {
+                loader.style.opacity = "0";
+                loader.style.visibility = "hidden";
+
+                clearInterval(loadingTimer);
+                
+                setTimeout(() => {
+                    startModal.classList.add("active");
+                }, 300);
+            }, 600);
+        });
+
+        startModal.addEventListener("click", () => {
+            startModal.classList.remove("active");
+            if (!musicPlaying) toggleMusic();
+        });
+
+        function toggleMusic() {
+            if (!musicPlaying) {
+                playCurrentBgm();
+                musicBtn.textContent = "音乐：开";
+                musicPlaying = true;
+            } else {
+                bgmNormal.pause();
+                bgmFinish.pause();
+                musicBtn.textContent = "音乐：关";
+                musicPlaying = false;
+            }
+        }
+
+        function playCurrentBgm() {
+            if (isFinishBgmActive) {
+                bgmNormal.pause();
+                bgmFinish.play().catch(()=>{});
+            } else {
+                bgmFinish.pause();
+                bgmNormal.play().catch(()=>{});
+            }
+        }
+
+        document.addEventListener("click", function startAudioOnInteraction() {
+            if (!musicPlaying) {
+                toggleMusic();
+            }
+            document.removeEventListener("click", startAudioOnInteraction);
+        }, { once: true });
+
+        musicBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            toggleMusic();
+        });
+
+        nextBtn.addEventListener("click", goNextPage);
+        prevBtn.addEventListener("click", goPrevPage);
+
+        book.addEventListener("click", (e) => {
+            const rect = book.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            if (clickX > rect.width / 2) {
+                goNextPage();
+            } else {
+                goPrevPage();
+            }
+        });
+
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "ArrowRight") goNextPage();
+            if (e.key === "ArrowLeft") goPrevPage();
+        });
+
+        function updateBookPosition() {
+            if (currentLocation === 1) {
+                book.style.transform = "translateX(0px)";
+            } else if (currentLocation === maxLocation) {
+                book.style.transform = "translateX(500px)";
+            } else {
+                book.style.transform = "translateX(250px)";
+            }
+        }
+
+        function checkFinishCondition() {
+            if (!hasUnlockedFinish && currentLocation === midPointLocation) {
+                hasUnlockedFinish = true;
+                
+                isFinishBgmActive = true;
+                if (musicPlaying) playCurrentBgm();
+
+                triggerCustomConfetti();
+
+                setTimeout(() => {
+                    finishModal.classList.add("active");
+                }, 600);
+            }
+        }
+
+        function triggerCustomConfetti() {
+            if (typeof confetti === 'function') {
+                const customColors = ['#e52d27', '#1e90ff', '#ffd700'];
+                
+                confetti({
+                    particleCount: 80,
+                    angle: 60,
+                    spread: 70,
+                    origin: { x: 0, y: 0.7 },
+                    colors: customColors
+                });
+                
+                confetti({
+                    particleCount: 80,
+                    angle: 120,
+                    spread: 70,
+                    origin: { x: 1, y: 0.7 },
+                    colors: customColors
+                });
+            }
+        }
+
+        function goNextPage() {
+            if (currentLocation < maxLocation) {
+                const paperIndex = currentLocation - 1;
+                papers[paperIndex].classList.add("flipped");
+                currentLocation++;
+                resetZIndex();
+                updateBookPosition();
+                updatePageCounter();
+                checkFinishCondition();
+            }
+        }
+
+        function goPrevPage() {
+            if (currentLocation > 1) {
+                const paperIndex = currentLocation - 2;
+                papers[paperIndex].classList.remove("flipped");
+                currentLocation--;
+                resetZIndex();
+                updateBookPosition();
+                updatePageCounter();
+                checkFinishCondition();
+            }
+        }
+
+        function updatePageCounter() {
+            pageNumText.textContent = `${currentLocation} / ${maxLocation}`;
+        }
+
+        goToEndBtn.addEventListener("click", () => {
+            finishModal.classList.remove("active");
+            endPage.classList.add("active");
+            endPageToggleBtn.style.display = "flex";
+        });
+
+        endPageToggleBtn.addEventListener("click", () => {
+            endPage.classList.toggle("active");
+        });
+
+        rereadFrontBtn.addEventListener("click", () => {
+            document.body.style.backgroundImage = `url('${wall4B64}')`;
+            endPage.classList.remove("active");
+            currentLocation = 1;
+            papers.forEach(p => p.classList.remove("flipped"));
+            resetZIndex();
+            updateBookPosition();
+            updatePageCounter();
+        });
+
+        rereadBackBtn.addEventListener("click", () => {
+            document.body.style.backgroundImage = `url('${wall4B64}')`;
+            endPage.classList.remove("active");
+            currentLocation = maxLocation;
+            papers.forEach(p => p.classList.add("flipped"));
+            resetZIndex();
+            updateBookPosition();
+            updatePageCounter();
+        });
+    </script>
+</body>
+</html>
